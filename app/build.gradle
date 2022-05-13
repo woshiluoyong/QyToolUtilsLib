@@ -8,7 +8,7 @@ android {
 
     defaultConfig {
         applicationId "com.qy.tool.utils"
-        minSdk 21
+        minSdk 19
         targetSdk 29
         versionCode 1
         versionName "1.0"
