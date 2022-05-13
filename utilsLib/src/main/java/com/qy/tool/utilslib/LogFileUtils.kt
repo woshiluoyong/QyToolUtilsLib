@@ -152,7 +152,10 @@ class LogFileUtils private constructor() {
                     }
                     builder.setNegativeButton("放弃"){_,_->}
                     builder.setCancelable(true)
-                    builder.create().show()
+                    val dialog = builder.create()
+                    dialog.show()
+                    dialog.getButton(AlertDialog.BUTTON_POSITIVE).setTextColor(Color.GREEN)
+                    dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setTextColor(Color.GRAY)
                 } catch (e: Exception) {
                     e.printStackTrace()
                 }
