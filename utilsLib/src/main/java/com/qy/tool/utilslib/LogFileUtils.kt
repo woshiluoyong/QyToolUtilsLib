@@ -233,7 +233,7 @@ class LogFileUtils private constructor() {
             eventCallback?.let { it(false, "isCanRecordLog is false") }
             return
         }//end of if
-        if(cacheNoInitLogList.size < 200){//避免频繁开关输出流导致oom
+        if(cacheNoInitLogList.size < limitMemorySize){//避免频繁开关输出流导致oom
             cacheNoInitLogList.add("Date:${generateCurrentDate()}\nLogStr:$logMsg\n")
             return
         }//end of if
