@@ -44,6 +44,7 @@ class LogFileUtils private constructor() {
     private var isCanRecordLog: Boolean = false
     private val threadPool: ExecutorService = ThreadPoolExecutor(10, 10, 60L, TimeUnit.SECONDS, ArrayBlockingQueue(10))
     private var selfLogFile: File? = null
+    private var limitMemorySize: Int = 200//限制先在内存集合里的条数
     private var userCustomInfo: String? = "nothing"//上传日志名中的自定义信息
     private var commitNeedToast: Boolean? = true//上传日志是否需要toast
     private var commitServerHost: String? = "https://openapi.qiyou.cn"//上传日志服务域名
@@ -67,8 +68,9 @@ class LogFileUtils private constructor() {
     }
 
     //初始化
-    fun init(application: Application, userCustomInfo: String? = null, commitNeedToast: Boolean? = null, commitServerHost: String? = null, commitServerAddr: String? = null){
+    fun init(application: Application, limitMemorySize: Int? = 200, userCustomInfo: String? = null, commitNeedToast: Boolean? = null, commitServerHost: String? = null, commitServerAddr: String? = null){
         this.application = application
+        this.limitMemorySize = if(null == limitMemorySize || limitMemorySize < 200) 200 else limitMemorySize
         updateSetUserCustomInfo(userCustomInfo)
         commitNeedToast?.let { this.commitNeedToast = it }
         commitServerHost?.let { this.commitServerHost = it }
@@ -100,7 +102,7 @@ class LogFileUtils private constructor() {
             println("======Stephen=LogFileUtils====Err====>application is Empty:重要,你没有调用init初始化日志工具!!")
             return
         }//end of if
-        checkCanRecordLogCore(configUidOrDeviceIdStr, curUid, curDeviceId, separator)
+        checkCanRecordLogCore(configUidOrDeviceIdStr, curUid, curDeviceId, if(separator.isNullOrBlank()) "," else separator)
         isInitializer = true
         checkInitLogUploadUi()
         changeLogUploadUi(isCanRecordLog)
@@ -539,30 +541,35 @@ class LogFileUtils private constructor() {
             }
         }
 
-        private var downX = 0F
-        private var downY = 0F
+        private var lastX = 0F
+        private var lastY = 0F
+        private var tranL = 0f
+        private var tranT = 0f
 
         @Override
         override fun onTouchEvent(event: MotionEvent): Boolean {
             super.onTouchEvent(event);
             if (!this.isEnabled) return false
+            val x = event.rawX
+            val y = event.rawY
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
-                    downX = event.x
-                    downY = event.y
+                    lastX = x
+                    lastY = y
                 }
                 MotionEvent.ACTION_MOVE -> {
-                    val xDistance: Float = event.x - downX
-                    val yDistance: Float = event.y - downY
-                    if (xDistance != 0F && yDistance != 0F) {
-                        val l =(left + xDistance).toInt()
-                        val r =(right + xDistance).toInt()
-                        val t =(top + yDistance).toInt()
-                        val b =(bottom + yDistance).toInt()
-                        if(l < 0 || r > screenWidth || t < statusHeight || b > screenHeight)return false
-                        isPressed = false
-                        this.layout(l, t, r, b)
-                    }//end of if
+                    val xDistance = x - lastX
+                    val yDistance = y - lastY
+                    tranL = this.translationX + xDistance
+                    tranT = this.translationY + yDistance
+                    val borderL = left + tranL
+                    val borderT = top + tranT
+                    if(borderL < 0 || (borderL + width) > screenWidth || borderT < statusHeight || (borderT + height) > screenHeight)return false
+                    this.translationX = tranL
+                    this.translationY = tranT
+                    lastX = x
+                    lastY = y
+                    isPressed = false
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> isPressed = false
             }//end of when
