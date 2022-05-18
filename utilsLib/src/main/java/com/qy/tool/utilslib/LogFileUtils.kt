@@ -349,14 +349,14 @@ class LogFileUtils private constructor() {
                     dismissLoadingDialog()
                 }
             }else{
-                val msg = "log file is not exists"
+                val msg = "日志记录文件不存在,请先正常操作产生日志"
                 println("======Stephen=LogFileUtils=====commitSelfLog====>$msg")
                 if(isNeedToast!!)Toast.makeText(application, msg, Toast.LENGTH_LONG).show()
                 eventCallback?.let { it(-3, msg) }
             }
         } catch (e: Exception) {
             e.printStackTrace()
-            val msg = "exception:${e.message}"
+            val msg = "上报日志发生异常:${e.message}"
             println("======Stephen=LogFileUtils=====commitSelfLog====>$msg")
             if(isNeedToast!!)Toast.makeText(application, msg, Toast.LENGTH_LONG).show()
             eventCallback?.let { it(-4, msg) }
