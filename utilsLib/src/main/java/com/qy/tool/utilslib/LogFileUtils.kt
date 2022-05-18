@@ -55,7 +55,7 @@ class LogFileUtils private constructor() {
     private val cacheShowActivityList = arrayListOf<Activity>()
 
     companion object {
-        const val ConfigKeyName = "CAN_UPLOAD_LOG_CONFIG"
+        const val ConfigKeyName = "CAN_UPLOAD_LOG_CONFIG"//ke==可用于后台配置的用户标识key
         private var mInstance: LogFileUtils? = null
 
         @JvmStatic
@@ -214,47 +214,80 @@ class LogFileUtils private constructor() {
     private fun getSelfLogName(context: Context): String = "${context.packageName}_log.txt"
 
     //追加日志记录
-    fun appendSelfLog(logMsg: String?){
-        if(null == application?.externalCacheDir || logMsg.isNullOrBlank())return
+    fun appendSelfLog(logMsg: String?, eventCallback: ((isSuccess: Boolean, msg: String?) -> Unit)? = null){
+        if(logMsg.isNullOrBlank()){
+            eventCallback?.let { it(false, "logMsg is empty") }
+            return
+        }//end of if
         if(!isInitializer){//未初始化时先缓存起来,避免缺失前面的日志
             cacheNoInitLogList.add("Date:${generateCurrentDate()}\nLogStr:$logMsg\n")
             return
         }//end of if
-        if(!isCanRecordLog)return
-        if(null == selfLogFile || !selfLogFile!!.exists()){
-            val dirs = File(getSelfLogFolder(application!!))
-            if (!dirs.exists()) dirs.mkdirs()
-            selfLogFile = File(dirs.absolutePath, getSelfLogName(application!!))
-            try {
-                selfLogFile!!.createNewFile()
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
+        if(null == application?.externalCacheDir){
+            eventCallback?.let { it(false, "application or application.externalCacheDir is null") }
+            return
         }//end of if
-        if (null != selfLogFile && selfLogFile!!.exists()) {
-            var fileOutputStream: FileOutputStream? = null
-            try {
-                fileOutputStream = FileOutputStream(selfLogFile, true)
-                if(cacheNoInitLogList.isNotEmpty()){
-                    cacheNoInitLogList.forEach {
-                        fileOutputStream.write(it.toByteArray())
-                    }
-                    cacheNoInitLogList.clear()
-                }//end of if
-                fileOutputStream.write("Date:${generateCurrentDate()}\nLogStr:$logMsg\n".toByteArray())
-            } catch (e: Exception) {
-                e.printStackTrace()
-            } finally {
-                if (fileOutputStream != null) {
+        if(!isCanRecordLog){
+            eventCallback?.let { it(false, "isCanRecordLog is false") }
+            return
+        }//end of if
+        if(cacheNoInitLogList.size < 200){//避免频繁开关输出流导致oom
+            cacheNoInitLogList.add("Date:${generateCurrentDate()}\nLogStr:$logMsg\n")
+            return
+        }//end of if
+        appendSelfLogCore(cacheNoInitLogList.clone() as List<String>, logMsg, eventCallback)
+        cacheNoInitLogList.clear()
+    }
+
+    private fun appendSelfLogCore(cacheLogList: List<String>, logMsg: String? = null, eventCallback: ((isSuccess: Boolean, msg: String?) -> Unit)? = null){
+        try {
+            threadPool.execute {
+                if (null == selfLogFile || !selfLogFile!!.exists()) {
+                    val dirs = File(getSelfLogFolder(application!!))
+                    if (!dirs.exists()) dirs.mkdirs()
+                    selfLogFile = File(dirs.absolutePath, getSelfLogName(application!!))
                     try {
-                        fileOutputStream.close()
+                        selfLogFile!!.createNewFile()
                     } catch (e: Exception) {
                         e.printStackTrace()
                     }
                 }//end of if
+                if (null != selfLogFile && selfLogFile!!.exists()) {
+                    println("======Stephen=LogFileUtils====appendSelfLog====>执行一次写入文件操作")
+                    var fileOutputStream: FileOutputStream? = null
+                    try {
+                        fileOutputStream = FileOutputStream(selfLogFile, true)
+                        if (cacheLogList.isNotEmpty()) {
+                            cacheLogList.forEach {
+                                fileOutputStream?.write(it.toByteArray())
+                            }
+                        }//end of if
+                        logMsg?.let{ fileOutputStream?.write("Date:${generateCurrentDate()}\nLogStr:$it\n".toByteArray()) }
+                        eventCallback?.let { it(true, "OK") }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                        val msg = "追加日志到文件异常:${e.message}"
+                        eventCallback?.let { it(false, msg) }
+                        println("======Stephen=LogFileUtils=====appendSelfLog======>$msg")
+                    } finally {
+                        if (null != fileOutputStream) {
+                            try {
+                                fileOutputStream.close()
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                            }
+                            fileOutputStream = null
+                        }//end of if
+                    }
+                } else {
+                    val msg = "日志文件为空,追加日志到文件失败"
+                    eventCallback?.let { it(false, msg) }
+                    println("======Stephen=LogFileUtils=====appendSelfLog======>$msg")
+                }
             }
-        } else {
-            println("======Stephen=LogFileUtils=====appendSelfLog======>日志文件为空,追加日志失败!")
+        } catch (e: Exception) {
+            e.printStackTrace()
+            println("======Stephen=LogFileUtils=====appendSelfLog====>exception:${e.message}")
         }
     }
 
@@ -282,6 +315,8 @@ class LogFileUtils private constructor() {
                 eventCallback?.let { it(0, msg) }
                 return
             }//end of if
+            appendSelfLogCore(cacheNoInitLogList.clone() as List<String>)//补上剩下的
+            cacheNoInitLogList.clear()
             val file = File(getSelfLogFolder(application!!), getSelfLogName(application!!))
             if(file.exists()){
                 showLoadingDialog()
@@ -373,7 +408,7 @@ class LogFileUtils private constructor() {
         return (dpValue * scale + 0.5f).toInt()
     }
 
-    private fun generateCurrentDate(): String = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
+    private fun generateCurrentDate(): String = SimpleDateFormat("yyyy-MM-dd_HH:mm:ss", Locale.getDefault()).format(Date())
 
     private fun doUpload(urlString: String, fileName: String, fileByteAry: ByteArray?, headerMap: Map<String?, String?>? = null,
                          paramMap: Map<String?, String?>? = null, listener: ((isSuccess: Boolean, resCode: Int, infoStr: String) -> Unit)? = null) {
