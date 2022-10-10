@@ -12,6 +12,6 @@ dependencyResolutionManagement {
         mavenCentral()
     }
 }
-rootProject.name = "qy-tool-utils"
+rootProject.name = "qyandroid-log-sdk"
 include ':app'
-include ':utilsLib'
+include ':logRecorder'

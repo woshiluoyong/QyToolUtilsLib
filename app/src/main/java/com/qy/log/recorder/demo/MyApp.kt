@@ -1,7 +1,7 @@
-package com.qy.tool.utils
+package com.qy.log.recorder.demo
 
 import android.app.Application
-import com.qy.tool.utilslib.LogFileUtils
+import com.qy.log.recorder.LogFileUtils
 
 class MyApp: Application() {
     override fun onCreate() {

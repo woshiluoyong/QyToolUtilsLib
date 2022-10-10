@@ -6,6 +6,14 @@
     android:layout_height="match_parent"
     android:gravity="center_horizontal"
     android:orientation="vertical">
+    <Button
+        android:id="@+id/showBtn"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:text="显示日志按钮"
+        android:textColor="@color/black"
+        android:textSize="16dp"/>
     <TextView
         android:id="@+id/showMsgT"
         android:layout_width="wrap_content"
@@ -23,5 +31,35 @@
         android:text="先点我生成日志到文件!"
         android:textColor="@color/white"
         android:textSize="16dp"
-        android:background="@color/purple_500"/>
+        android:background="#ff0000"/>
+    <Button
+        android:id="@+id/shareLogT"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="30dp"
+        android:padding="5dp"
+        android:text="点我调用分享日志文件!"
+        android:textColor="@color/white"
+        android:textSize="16dp"
+        android:background="#08AF08"/>
+    <Button
+        android:id="@+id/deleteLogT"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="30dp"
+        android:padding="5dp"
+        android:text="点我可以删除日志文件!"
+        android:textColor="@color/white"
+        android:textSize="16dp"
+        android:background="#0000ff"/>
+    <Button
+        android:id="@+id/existsLogT"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="30dp"
+        android:padding="5dp"
+        android:text="点我判定日志文件存在!"
+        android:textColor="@color/white"
+        android:textSize="16dp"
+        android:background="#ff00ff"/>
 </LinearLayout>

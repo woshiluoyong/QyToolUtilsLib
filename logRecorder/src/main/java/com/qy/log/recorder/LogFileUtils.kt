@@ -1,9 +1,10 @@
-package com.qy.tool.utilslib
+package com.qy.log.recorder
 
 import android.app.Activity
 import android.app.AlertDialog
 import android.app.Application
 import android.content.Context
+import android.content.Intent
 import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Point
@@ -11,8 +12,11 @@ import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.LayerDrawable
 import android.graphics.drawable.RippleDrawable
+import android.net.Uri
 import android.os.Build
+import android.os.Build.VERSION
 import android.os.Bundle
+import android.os.StrictMode
 import android.text.TextUtils
 import android.util.DisplayMetrics
 import android.view.*
@@ -36,27 +40,28 @@ import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
 
 
-//日志文件
+//记录日志到文件
 class LogFileUtils private constructor() {
     private var application: Application? = null
     private var isInitializer: Boolean = false
     private val cacheNoInitLogList = arrayListOf<String>()
     private var isCanRecordLog: Boolean = false
     private val threadPool: ExecutorService = ThreadPoolExecutor(10, 10, 60L, TimeUnit.SECONDS, ArrayBlockingQueue(10))
-    private var selfLogFile: File? = null
     private var limitMemorySize: Int = 200//限制先在内存集合里的条数
     private var userCustomInfo: String? = "nothing"//上传日志名中的自定义信息
     private var commitNeedToast: Boolean? = true//上传日志是否需要toast
+    private var commitNeedLoading: Boolean? = true//上传日志是否需要loading
     private var commitServerHost: String? = "https://openapi.qiyou.cn"//上传日志服务域名
     private var commitServerAddr: String? = "/api/common_bll/v1/external/reportLog/log/action/upload"//上传日志服务地址
     private var loadingDialog: AlertDialog? = null
     private var isCommitLogging = false//是否提交日志中
+    private var onChangeLogUploadUiCallback: OnChangeLogUploadUiCallback? = null
     private var uploadLogBtn: DragFloatTextView? = null
     private var curActivity: Activity? = null
     private val cacheShowActivityList = arrayListOf<Activity>()
 
     companion object {
-        const val ConfigKeyName = "CAN_UPLOAD_LOG_CONFIG"//ke==可用于后台配置的用户标识key
+        const val ConfigKeyName = "CAN_UPLOAD_LOG_CONFIG"//可用于后台配置的用户标识key
         private var mInstance: LogFileUtils? = null
 
         @JvmStatic
@@ -68,11 +73,13 @@ class LogFileUtils private constructor() {
     }
 
     //初始化
-    fun init(application: Application, limitMemorySize: Int? = 200, userCustomInfo: String? = null, commitNeedToast: Boolean? = null, commitServerHost: String? = null, commitServerAddr: String? = null){
+    fun init(application: Application, limitMemorySize: Int? = 200, userCustomInfo: String? = null, commitNeedToast: Boolean? = null, commitNeedLoading: Boolean? = null,
+             commitServerHost: String? = null, commitServerAddr: String? = null){
         this.application = application
         this.limitMemorySize = if(null == limitMemorySize || limitMemorySize < 200) 200 else limitMemorySize
         updateSetUserCustomInfo(userCustomInfo)
         commitNeedToast?.let { this.commitNeedToast = it }
+        commitNeedLoading?.let { this.commitNeedLoading = it }
         commitServerHost?.let { this.commitServerHost = it }
         commitServerAddr?.let { this.commitServerAddr = it }
         println("======Stephen=LogFileUtils====init====>初始化日志工具")
@@ -94,6 +101,18 @@ class LogFileUtils private constructor() {
 
             override fun onActivityDestroyed(activity: Activity) {}
         })
+        //在Android 7.0及以上系统，限制了file域的访问，导致进行intent分享的时候，会报错甚至崩溃。我们需要在App启动的时候在Application的onCreate方法中添加如下代码，解除对file域访问的限制
+        if (VERSION.SDK_INT >= 24) StrictMode.setVmPolicy(StrictMode.VmPolicy.Builder().build())
+    }
+
+    //设置自定义上传按钮事件回调(如果设置了将不显示默认的上传悬浮按钮,注意,必须设置在updateCheckCanRecordLog方法调用前)
+    fun setOnChangeLogUploadUiCallback(onChangeLogUploadUiCallback: OnChangeLogUploadUiCallback? = null){
+        this.onChangeLogUploadUiCallback = onChangeLogUploadUiCallback
+    }
+
+    //直接允许记录日志
+    fun updateDirectCanRecordLog(){
+        updateCheckCanRecordLog("allowRecordLog", "allowRecordLog", "allowRecordLog")
     }
 
     //更新检查标志,主要判断是否允许记录日志到文件(uid或deviceId其一匹配上后台配置的配置参数(默认逗号分隔)就显示入口),调用处主要为获取配置参数后及登录后设置uid
@@ -106,6 +125,10 @@ class LogFileUtils private constructor() {
         isInitializer = true
         checkInitLogUploadUi()
         changeLogUploadUi(isCanRecordLog)
+        if(isCanRecordLog){
+            appendSelfLogCore(cacheNoInitLogList.clone() as List<String>)//存储前面缓存的
+            cacheNoInitLogList.clear()
+        }//end of if
     }
 
     private fun checkCanRecordLogCore(configUidOrDeviceIdStr: String?, curUid: String?, curDeviceId: String?, separator: String? = ","){
@@ -129,9 +152,11 @@ class LogFileUtils private constructor() {
         userCustomInfo?.let{ this.userCustomInfo = it }
     }
 
+    /*********************上传悬浮按钮UI Start***************************/
     //log上传入口开关初始化
     private fun checkInitLogUploadUi(){
         if(null == application || !isCanRecordLog || null != uploadLogBtn)return
+        if(null != onChangeLogUploadUiCallback)return//自定义了log日志显示事件就不显示内置ui
         uploadLogBtn = DragFloatTextView(application!!.applicationContext)
         uploadLogBtn?.run {
             text = "上传日志"
@@ -139,10 +164,10 @@ class LogFileUtils private constructor() {
             textSize = 12f
             setTextColor(Color.parseColor("#614B18"))
             isSingleLine = false
-            setPadding(dip2px(context, 10f), dip2px(context, 0f), dip2px(context, 10f), dip2px(context, 0f))
+            setPadding(dip2px(10f), dip2px(0f), dip2px(10f), dip2px(0f))
             setOnClickListener {
                 if(null == curActivity || curActivity!!.isFinishing || curActivity!!.isDestroyed){
-                    commitSelfLog(userCustomInfo, commitNeedToast, commitServerHost, commitServerAddr)
+                    commitSelfLog(userCustomInfo, commitNeedToast, commitNeedLoading, commitServerHost, commitServerAddr)
                     return@setOnClickListener
                 }//end of if
                 try {
@@ -150,7 +175,7 @@ class LogFileUtils private constructor() {
                     builder.setTitle("请确认")
                     builder.setMessage("你确认提交本地日志给开发者吗?")
                     builder.setPositiveButton("提交") { _, _ ->
-                        commitSelfLog(userCustomInfo, commitNeedToast, commitServerHost, commitServerAddr)
+                        commitSelfLog(userCustomInfo, commitNeedToast, commitNeedLoading, commitServerHost, commitServerAddr)
                     }
                     builder.setNegativeButton("放弃"){_,_->}
                     builder.setCancelable(true)
@@ -167,6 +192,10 @@ class LogFileUtils private constructor() {
 
     private fun changeLogUploadUi(isShow: Boolean){
         hideFromAppTopView(uploadLogBtn)
+        if(null != onChangeLogUploadUiCallback){
+            onChangeLogUploadUiCallback!!.onChangeLogUploadUi(isShow)
+            return
+        }//end of if
         if(isShow)showFromAppTopView(curActivity, uploadLogBtn)
     }
 
@@ -177,8 +206,8 @@ class LogFileUtils private constructor() {
                 if (!it.isDestroyed) { //Activity不为空并且没有被释放掉
                     val root = it.window.decorView as ViewGroup //获取Activity顶层视图
                     if (null != root) {
-                        val params = FrameLayout.LayoutParams(dip2px(it, 64f), dip2px(it, 64f))
-                        params.bottomMargin = dip2px(it, 150f)
+                        val params = FrameLayout.LayoutParams(dip2px(64f), dip2px(64f))
+                        params.bottomMargin = dip2px(150f)
                         params.marginEnd = 0
                         params.gravity = Gravity.END or Gravity.BOTTOM
                         root.addView(view, params)
@@ -211,9 +240,57 @@ class LogFileUtils private constructor() {
         }
     }
 
-    private fun getSelfLogFolder(context: Context): String = "${context.externalCacheDir?.path}/Log"
+    /*********************上传悬浮按钮UI End***************************/
 
-    private fun getSelfLogName(context: Context): String = "${context.packageName}_log.txt"
+    private fun getSelfLogFolder(): String?{
+        if(null == application?.externalCacheDir)return null
+        return "${application!!.externalCacheDir!!.path}/Log"
+    }
+
+    private fun getSelfLogName(): String?{
+        if(application?.packageName.isNullOrBlank())return null
+        return "${application!!.packageName}_log.txt"
+    }
+
+    //获取日志文件
+    fun getSelfLogFile(isCheckCreate: Boolean? = false): File?{
+        if(null == application?.externalCacheDir)return null
+        try {
+            var selfLogFile = File(getSelfLogFolder(), getSelfLogName())
+            if (isCheckCreate!! && (null == selfLogFile || !selfLogFile!!.exists())) {
+                try {
+                    val dirs = File(getSelfLogFolder())
+                    if (!dirs.exists()) dirs.mkdirs()
+                    selfLogFile = File(dirs.absolutePath, getSelfLogName())
+                    selfLogFile.createNewFile()
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }//end of if
+            return selfLogFile
+        } catch (e: Exception) { e.printStackTrace() }
+        return null
+    }
+
+    //日志文件是否存在
+    fun isSelfLogFileExists(): Boolean?{
+        if(null == application?.externalCacheDir)return null
+        try {
+            val selfLogFile: File? = File(getSelfLogFolder(), getSelfLogName())
+            return selfLogFile?.exists()
+        } catch (e: Exception) { e.printStackTrace() }
+        return null
+    }
+
+    //删除日志文件
+    fun deleteSelfLogFile(): Boolean{
+        if(null == application?.externalCacheDir)return false
+        try {
+            val file = getSelfLogFile() ?: return false
+            return file.delete()
+        } catch (e: Exception) { e.printStackTrace() }
+        return false
+    }
 
     //追加日志记录
     fun appendSelfLog(logMsg: String?, eventCallback: ((isSuccess: Boolean, msg: String?) -> Unit)? = null){
@@ -222,6 +299,7 @@ class LogFileUtils private constructor() {
             return
         }//end of if
         if(!isInitializer){//未初始化时先缓存起来,避免缺失前面的日志
+            println("======Stephen=LogFileUtils====appendSelfLog====>未初始化时先缓存起来")
             cacheNoInitLogList.add("Date:${generateCurrentDate()}\nLogStr:$logMsg\n")
             return
         }//end of if
@@ -244,17 +322,8 @@ class LogFileUtils private constructor() {
     private fun appendSelfLogCore(cacheLogList: List<String>, logMsg: String? = null, eventCallback: ((isSuccess: Boolean, msg: String?) -> Unit)? = null){
         try {
             threadPool.execute {
-                if (null == selfLogFile || !selfLogFile!!.exists()) {
-                    val dirs = File(getSelfLogFolder(application!!))
-                    if (!dirs.exists()) dirs.mkdirs()
-                    selfLogFile = File(dirs.absolutePath, getSelfLogName(application!!))
-                    try {
-                        selfLogFile!!.createNewFile()
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                    }
-                }//end of if
-                if (null != selfLogFile && selfLogFile!!.exists()) {
+                val selfLogFile: File? = getSelfLogFile(true)
+                if (true == isSelfLogFileExists()) {
                     println("======Stephen=LogFileUtils====appendSelfLog====>执行一次写入文件操作")
                     var fileOutputStream: FileOutputStream? = null
                     try {
@@ -293,58 +362,61 @@ class LogFileUtils private constructor() {
         }
     }
 
+    fun commitSelfLog(onLogUploadEventCallback: OnLogUploadEventCallback? = null){
+        commitSelfLog(onLogUploadEventCallback)
+    }
+
     //上报日志记录
-    fun commitSelfLog(userCustomInfo: String? = "nothing", isNeedToast: Boolean? = true, commitServerHost: String? = "https://openapi.qiyou.cn",
-                      commitServerAddr: String? = "/api/common_bll/v1/external/reportLog/log/action/upload", eventCallback: ((status: Int, msg: String?) -> Unit)? = null) {
+    fun commitSelfLog(userCustomInfo: String? = "nothing", isNeedToast: Boolean? = true, isNeedLoading: Boolean? = true, commitServerHost: String? = "https://openapi.qiyou.cn",
+                      commitServerAddr: String? = "/api/common_bll/v1/external/reportLog/log/action/upload", onLogUploadEventCallback: OnLogUploadEventCallback? = null) {
         if(!isCanRecordLog)return
         try {
             if(null == application){
                 val msg = "application is empty"
                 println("======Stephen=LogFileUtils=====commitSelfLog====>$msg")
-                eventCallback?.let { it(-1, msg) }
+                onLogUploadEventCallback?.let { it.onLogUploadEnd(false,-1, msg) }
                 return
             }//end of if
             if(null == application!!.externalCacheDir || commitServerHost.isNullOrBlank()){
                 val msg = "key data is empty, please init setting"
                 println("======Stephen=LogFileUtils=====commitSelfLog====>$msg")
-                eventCallback?.let { it(-2, msg) }
+                onLogUploadEventCallback?.let { it.onLogUploadEnd(false,-2, msg) }
                 return
             }//end of if
             if(isCommitLogging){
                 val msg = "正在提交中，请耐心等待完成提示..."
                 println("======Stephen=LogFileUtils=====commitSelfLog====>$msg")
                 if(isNeedToast!!)Toast.makeText(application, msg, Toast.LENGTH_LONG).show()
-                eventCallback?.let { it(0, msg) }
+                onLogUploadEventCallback?.let { it.onLogUploadEnd(false,-3, msg) }
                 return
             }//end of if
             appendSelfLogCore(cacheNoInitLogList.clone() as List<String>)//补上剩下的
             cacheNoInitLogList.clear()
-            val file = File(getSelfLogFolder(application!!), getSelfLogName(application!!))
-            if(file.exists()){
-                showLoadingDialog()
+            if(true == isSelfLogFileExists()){
+                if(isNeedLoading!!)showLoadingDialog()
                 isCommitLogging = true
                 val msg = "上报日志记录开始,如果日志过大,将比较慢,期间请勿操作,请耐心等待完成提示..."
                 if(isNeedToast!!)Toast.makeText(application, msg, Toast.LENGTH_LONG).show()
-                eventCallback?.let { it(1, msg) }
-                val newLogFile = File(getSelfLogFolder(application!!), String.format("%s_%s_%s_log.txt", generateCurrentDate(), application!!.packageName, userCustomInfo))
-                file.renameTo(newLogFile)
+                onLogUploadEventCallback?.let { it.onLogUploadStart(msg) }
+                val newLogFile = File(getSelfLogFolder(), String.format("%s_%s_%s_log.txt", generateCurrentDate(), application!!.packageName, userCustomInfo))
+                getSelfLogFile()?.renameTo(newLogFile)
                 doUpload("${commitServerHost}$commitServerAddr", newLogFile!!.name, newLogFile!!.readBytes()){ isSuccess, resCode, infoStr ->
                     var msg = "上报日志记录成功"
                     if (isSuccess) {
-                        try { newLogFile?.delete() } catch (e: Exception) { e.printStackTrace() }
                         isCommitLogging = false
-                        eventCallback?.let { it(2, msg) }
+                        onLogUploadEventCallback?.let { it.onLogUploadEnd(true,0, msg) }
                     } else {
                         msg = "上报日志记录失败!(${resCode})${infoStr}"
                         try {
-                            if (newLogFile!!.length() > 8 * 1024 * 1024) {//服务器上传大小上限8mb
+                            /*if (newLogFile!!.length() > 8 * 1024 * 1024) {//服务器上传大小上限8mb
                                 try { newLogFile?.delete() } catch (e: Exception) { e.printStackTrace() }
                             } else {
-                                newLogFile.renameTo(File(getSelfLogFolder(application!!), getSelfLogName(application!!)))//恢复回原名字
-                            }
+
+                            }*/
+                            newLogFile.renameTo(getSelfLogFile())//恢复回原名字
                         } catch (e: Exception) { e.printStackTrace() }
                         isCommitLogging = false
-                        eventCallback?.let { it(3, msg) }
+                        onLogUploadEventCallback?.let { it.onLogUploadEnd(false,-6, msg) }
                     }
                     println("======Stephen=LogFileUtils=====commitSelfLog====>$msg")
                     if(isNeedToast!!) CoroutineScope(Dispatchers.Main).launch { Toast.makeText(application, msg, Toast.LENGTH_LONG).show() }
@@ -354,23 +426,15 @@ class LogFileUtils private constructor() {
                 val msg = "日志记录文件不存在,请先正常操作产生日志"
                 println("======Stephen=LogFileUtils=====commitSelfLog====>$msg")
                 if(isNeedToast!!)Toast.makeText(application, msg, Toast.LENGTH_LONG).show()
-                eventCallback?.let { it(-3, msg) }
+                onLogUploadEventCallback?.let { it.onLogUploadEnd(false,-4, msg) }
             }
         } catch (e: Exception) {
             e.printStackTrace()
             val msg = "上报日志发生异常:${e.message}"
             println("======Stephen=LogFileUtils=====commitSelfLog====>$msg")
             if(isNeedToast!!)Toast.makeText(application, msg, Toast.LENGTH_LONG).show()
-            eventCallback?.let { it(-4, msg) }
+            onLogUploadEventCallback?.let { it.onLogUploadEnd(false,-5, msg) }
         }
-    }
-
-    //删除日志文件
-    fun deleteSelfLog(context: Context?){
-        if(!isCanRecordLog || null == context?.externalCacheDir)return
-        try {
-            File(getSelfLogFolder(context), getSelfLogName(context))?.delete()
-        } catch (e: Exception) { e.printStackTrace() }
     }
 
     private fun showLoadingDialog() {
@@ -390,7 +454,7 @@ class LogFileUtils private constructor() {
             textSize = 16f
             setTextColor(Color.GRAY)
             isSingleLine = false
-            setPadding(dip2px(context, 10f), dip2px(context, 5f), dip2px(context, 10f), dip2px(context, 5f))
+            setPadding(dip2px(10f), dip2px(5f), dip2px(10f), dip2px(5f))
         }
         val contentV = RelativeLayout(curActivity)
         val lp = RelativeLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
@@ -404,9 +468,9 @@ class LogFileUtils private constructor() {
         loadingDialog?.dismiss()
     }
 
-    private fun dip2px(context: Context?, dpValue: Float): Int {
-        if(null == context)return dpValue.toInt()
-        val scale = context.resources.displayMetrics.density
+    private fun dip2px(dpValue: Float): Int {
+        if(null == application)return dpValue.toInt()
+        val scale = application!!.resources.displayMetrics.density
         return (dpValue * scale + 0.5f).toInt()
     }
 
@@ -513,6 +577,26 @@ class LogFileUtils private constructor() {
         }
     }
 
+    // 通过系统自带分享发送文件
+    fun shareSelfLogBySystem(): Boolean {
+        val file = getSelfLogFile() ?: return false
+        val intent = Intent(Intent.ACTION_SEND)
+        intent.type = "text/plain"
+        return try {
+            val fileUri: Uri = Uri.fromFile(file)
+            application!!.grantUriPermission("com.tencent.mm", fileUri, Intent.FLAG_GRANT_READ_URI_PERMISSION)// 授权给微信访问路径
+            intent.putExtra(Intent.EXTRA_STREAM, fileUri)
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            application!!.startActivity(Intent.createChooser(intent, "分享日志文件"))
+            true
+        } catch (e: java.lang.Exception) {
+            e.printStackTrace()
+            false
+        }
+    }
+
+    /*********************以下为附加***************************/
     private class DragFloatTextView : AppCompatTextView {
         private var screenWidth = 0//屏幕内横向方向移动范围
         private var screenHeight = 0//屏幕内垂直方向移动范围
@@ -560,6 +644,8 @@ class LogFileUtils private constructor() {
                 MotionEvent.ACTION_MOVE -> {
                     val xDistance = x - lastX
                     val yDistance = y - lastY
+                    //println("======Stephen============x:$x=====y:$y====>xDistance:$xDistance===>yDistance:$yDistance")
+                    if(0f == xDistance && 0f == yDistance)return false
                     tranL = this.translationX + xDistance
                     tranT = this.translationY + yDistance
                     val borderL = left + tranL
@@ -597,5 +683,14 @@ class LogFileUtils private constructor() {
             }
             return statusHeight
         }
+    }
+
+    interface OnChangeLogUploadUiCallback{
+        fun onChangeLogUploadUi(isShow: Boolean)
+    }
+
+    interface OnLogUploadEventCallback{
+        fun onLogUploadStart(hintMsg: String? = "")
+        fun onLogUploadEnd(isSuccess: Boolean, errFlag: Int? = 0, errMsg: String? = "OK")
     }
 }
