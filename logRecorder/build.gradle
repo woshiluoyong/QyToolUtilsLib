@@ -38,10 +38,10 @@ afterEvaluate {
                 // Applies the component for the release build variant.
                 from components.release
 
-                // You can then customize attributes of the publication as shown below.
+                //和仓库地址的反写一致，此处不会修改最终发布的组件依赖名，最终发布的groupId由你的仓库地址和名称决定
                 groupId = 'com.qy.log.recorder'
+                //单组件发布时随意填写，多组件时即为此组件的artifactId
                 artifactId = 'final'
-                version = '1.0.0'
             }
         }
     }
