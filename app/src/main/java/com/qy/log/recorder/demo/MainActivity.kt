@@ -1,11 +1,12 @@
 package com.qy.log.recorder.demo
 
-import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
 import android.view.View
 import android.widget.TextView
 import android.widget.Toast
-import com.qy.log.recorder.LogFileUtils
+import androidx.appcompat.app.AppCompatActivity
+import com.qy.encryptor.QyEncryptor
+import com.qy.log.recorder.QyLogRecorder
 import com.qy.tool.utils.R
 
 class MainActivity : AppCompatActivity() {
@@ -13,21 +14,24 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        LogFileUtils.getInstance().setOnChangeLogUploadUiCallback(object : LogFileUtils.OnChangeLogUploadUiCallback{
+        val showMsgT = findViewById<TextView>(R.id.showMsgT)
+        val infoMsgT = findViewById<TextView>(R.id.infoMsgT)
+
+        QyLogRecorder.getInstance().setOnChangeLogUploadUiCallback(object : QyLogRecorder.OnChangeLogUploadUiCallback{
             override fun onChangeLogUploadUi(isShow: Boolean) {
-                println("======Stephen=======onChangeLogUploadUi====>$isShow")
+                showMsgT.text = "onChangeLogUploadUi====>$isShow"
             }
         })
         findViewById<View>(R.id.showBtn).setOnClickListener {
-            LogFileUtils.getInstance().updateDirectCanRecordLog()
+            QyLogRecorder.getInstance().updateDirectCanRecordLog()
         }
-        val showMsgT = findViewById<TextView>(R.id.showMsgT)
+
         findViewById<View>(R.id.printLogT).setOnClickListener {
             toastMsg("==========>打印日志中,可查看Logcat...")
             for (i in 0..1000){
                 var logStr = "==========>当前写入日志索引:$i"
                 println("======Stephen=======before====>$logStr")
-                LogFileUtils.getInstance().appendSelfLog(logStr){isSuccess, msg ->
+                QyLogRecorder.getInstance().appendSelfLog(logStr){ isSuccess, msg ->
                     println("======Stephen======after=====>$logStr========>$isSuccess====>$msg")
                 }
             }
@@ -35,15 +39,32 @@ class MainActivity : AppCompatActivity() {
         }
 
         findViewById<View>(R.id.shareLogT).setOnClickListener {
-            LogFileUtils.getInstance().shareSelfLogBySystem()
+            QyLogRecorder.getInstance().shareSelfLogBySystem()
         }
 
         findViewById<View>(R.id.deleteLogT).setOnClickListener {
-            toastMsg("==========>删除日志文件:${LogFileUtils.getInstance().deleteSelfLogFile()}")
+            toastMsg("==========>删除日志文件:${QyLogRecorder.getInstance().deleteSelfLogFile()}")
         }
 
         findViewById<View>(R.id.existsLogT).setOnClickListener {
-            toastMsg("==========>判定日志文件:${LogFileUtils.getInstance().isSelfLogFileExists()}")
+            toastMsg("==========>判定日志文件:${QyLogRecorder.getInstance().isSelfLogFileExists()}")
+        }
+
+        var encrtotVal = ""
+        findViewById<View>(R.id.encryptTxtT).setOnClickListener {
+            var encryptStr = "奇游加速器Nb,No.1!"
+            encrtotVal = QyEncryptor.methodForEn(encryptStr)
+            println("======Stephen===========>encrtotVal:$encrtotVal")
+            infoMsgT.text = "原始串:${encryptStr}\n加密串:${encrtotVal}"
+        }
+
+        findViewById<View>(R.id.dencryptTxtT).setOnClickListener {
+            if(encrtotVal.isNullOrBlank()){
+                toastMsg("请先加密")
+                return@setOnClickListener
+            }//end of if
+            infoMsgT.text = "加密串:${encrtotVal}\n解密1串:${QyEncryptor.methodForDe(encrtotVal)}\n" +
+                    "解密2串:${QyEncryptor.execDenCrypt(encrtotVal, "GsLoeB@V%Eo!P${'$'}Se", "@wP*6cEeTbtWeYRR")}"
         }
     }
 

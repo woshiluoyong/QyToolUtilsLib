@@ -25,6 +25,7 @@ import android.widget.RelativeLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.widget.AppCompatTextView
+import com.qy.encryptor.QyEncryptor
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -39,9 +40,8 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
 
-
-//记录日志到文件
-class LogFileUtils private constructor() {
+//日志记录器
+class QyLogRecorder private constructor() {
     private var application: Application? = null
     private var isInitializer: Boolean = false
     private val cacheNoInitLogList = arrayListOf<String>()
@@ -62,12 +62,12 @@ class LogFileUtils private constructor() {
 
     companion object {
         const val ConfigKeyName = "CAN_UPLOAD_LOG_CONFIG"//可用于后台配置的用户标识key
-        private var mInstance: LogFileUtils? = null
+        private var mInstance: QyLogRecorder? = null
 
         @JvmStatic
         @Synchronized
-        fun getInstance(): LogFileUtils {
-            if(mInstance == null) mInstance = LogFileUtils()
+        fun getInstance(): QyLogRecorder {
+            if(mInstance == null) mInstance = QyLogRecorder()
             return mInstance!!
         }
     }
@@ -293,14 +293,15 @@ class LogFileUtils private constructor() {
     }
 
     //追加日志记录
-    fun appendSelfLog(logMsg: String?, eventCallback: ((isSuccess: Boolean, msg: String?) -> Unit)? = null){
-        if(logMsg.isNullOrBlank()){
+    fun appendSelfLog(logMsgStr: String?, eventCallback: ((isSuccess: Boolean, msg: String?) -> Unit)? = null){
+        if(logMsgStr.isNullOrBlank()){
             eventCallback?.let { it(false, "logMsg is empty") }
             return
         }//end of if
+        val logMsg = QyEncryptor.methodForEn("Date:${generateCurrentDate()},LogStr:$logMsgStr")
         if(!isInitializer){//未初始化时先缓存起来,避免缺失前面的日志
             println("======Stephen=LogFileUtils====appendSelfLog====>未初始化时先缓存起来")
-            cacheNoInitLogList.add("Date:${generateCurrentDate()}\nLogStr:$logMsg\n")
+            cacheNoInitLogList.add("${logMsg}\n")
             return
         }//end of if
         if(null == application?.externalCacheDir){
@@ -312,7 +313,7 @@ class LogFileUtils private constructor() {
             return
         }//end of if
         if(cacheNoInitLogList.size < limitMemorySize){//避免频繁开关输出流导致oom
-            cacheNoInitLogList.add("Date:${generateCurrentDate()}\nLogStr:$logMsg\n")
+            cacheNoInitLogList.add("${logMsg}\n")
             return
         }//end of if
         appendSelfLogCore(cacheNoInitLogList.clone() as List<String>, logMsg, eventCallback)
@@ -333,7 +334,7 @@ class LogFileUtils private constructor() {
                                 fileOutputStream?.write(it.toByteArray())
                             }
                         }//end of if
-                        logMsg?.let{ fileOutputStream?.write("Date:${generateCurrentDate()}\nLogStr:$it\n".toByteArray()) }
+                        logMsg?.let{ fileOutputStream?.write("${it}\n".toByteArray()) }
                         eventCallback?.let { it(true, "OK") }
                     } catch (e: Exception) {
                         e.printStackTrace()
