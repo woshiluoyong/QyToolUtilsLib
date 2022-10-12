@@ -581,6 +581,8 @@ class QyLogRecorder private constructor() {
     // 通过系统自带分享发送文件
     fun shareSelfLogBySystem(): Boolean {
         val file = getSelfLogFile() ?: return false
+        appendSelfLogCore(cacheNoInitLogList.clone() as List<String>)//补上剩下的
+        cacheNoInitLogList.clear()
         val intent = Intent(Intent.ACTION_SEND)
         intent.type = "text/plain"
         return try {

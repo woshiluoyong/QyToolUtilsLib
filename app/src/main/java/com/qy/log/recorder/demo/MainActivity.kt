@@ -63,8 +63,7 @@ class MainActivity : AppCompatActivity() {
                 toastMsg("请先加密")
                 return@setOnClickListener
             }//end of if
-            infoMsgT.text = "加密串:${encrtotVal}\n解密1串:${QyEncryptor.methodForDe(encrtotVal)}\n" +
-                    "解密2串:${QyEncryptor.execDenCrypt(encrtotVal, "GsLoeB@V%Eo!P${'$'}Se", "@wP*6cEeTbtWeYRR")}"
+            infoMsgT.text = "加密串:${encrtotVal}\n解密串:${QyEncryptor.methodForDe(encrtotVal)}"
         }
     }
 
