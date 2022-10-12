@@ -34,7 +34,7 @@ def GROUP_ID = "com.gitee.stephenlovevicky"
 // 项目名称
 def ARTIFACT_ID = "qyLogRecorder"
 // 版本号
-def VERSION = "1.0.5"
+def VERSION = "1.1.2"
 
 group GROUP_ID  //一定要加入，否者发布编译时报错
 version VERSION
