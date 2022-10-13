@@ -14,28 +14,34 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
+        val showBtn = findViewById<TextView>(R.id.showBtn)
         val showMsgT = findViewById<TextView>(R.id.showMsgT)
         val infoMsgT = findViewById<TextView>(R.id.infoMsgT)
 
-        QyLogRecorder.getInstance().setOnChangeLogUploadUiCallback(object : QyLogRecorder.OnChangeLogUploadUiCallback{
-            override fun onChangeLogUploadUi(isShow: Boolean) {
-                showMsgT.text = "onChangeLogUploadUi====>$isShow"
+        showBtn.text = "当前${if(QyLogRecorder.getInstance().isCanRecordLog()) "允许" else "禁止"}记录日志"
+        QyLogRecorder.getInstance().setOnChangeCanRecordLogCallback(object : QyLogRecorder.OnChangeCanRecordLogCallback{
+            override fun onChangeCanRecordLog(isCanRecordLog: Boolean) {
+                showBtn.text = "当前${if(isCanRecordLog) "允许" else "禁止"}记录日志"
             }
         })
-        findViewById<View>(R.id.showBtn).setOnClickListener {
-            QyLogRecorder.getInstance().updateDirectCanRecordLog()
+        showBtn.setOnClickListener {
+            QyLogRecorder.getInstance().updateDirectRecordLog(!QyLogRecorder.getInstance().isCanRecordLog())
         }
 
         findViewById<View>(R.id.printLogT).setOnClickListener {
-            toastMsg("==========>打印日志中,可查看Logcat...")
-            for (i in 0..1000){
-                var logStr = "==========>当前写入日志索引:$i"
-                println("======Stephen=======before====>$logStr")
-                QyLogRecorder.getInstance().appendSelfLog(logStr){ isSuccess, msg ->
-                    println("======Stephen======after=====>$logStr========>$isSuccess====>$msg")
+            showMsgT.text = "==========>打印日志中,可查看Logcat..."
+            Thread {
+                for (i in 0..1000) {
+                    var logStr = "==========>当前写入日志索引:$i"
+                    println("======Stephen=======before====>$logStr")
+                    QyLogRecorder.getInstance().appendSelfLog(logStr) { isSuccess, msg ->
+                        println("======Stephen======after=====>$logStr========>$isSuccess====>$msg")
+                    }
                 }
-            }
-            showMsgT.text = "==========>打印日志:完成"
+                runOnUiThread{
+                    showMsgT.text = "==========>打印日志:完成"
+                }
+            }.start()
         }
 
         findViewById<View>(R.id.shareLogT).setOnClickListener {

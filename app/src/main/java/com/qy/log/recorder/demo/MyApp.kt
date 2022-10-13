@@ -7,6 +7,6 @@ class MyApp: Application() {
     override fun onCreate() {
         super.onCreate()
         QyLogRecorder.getInstance().appendSelfLog("Application初始化,我提前打印日志")
-        QyLogRecorder.getInstance().init(this)
+        QyLogRecorder.getInstance().init(this, true, true, false)
     }
 }
